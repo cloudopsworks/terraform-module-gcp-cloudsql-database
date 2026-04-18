@@ -1,37 +1,138 @@
-name: Terraform Transit Gateway Module
+name: terraform-module-gcp-cloudsql-database
 #logo: logo/logo.jpg
 badges:
   - name: Latest Release
-    image: https://img.shields.io/github/release/<owner/repo>.svg?style=for-the-badge
-    url: https://github.com/<owner/repo>/releases/latest
+    image: https://img.shields.io/github/release/cloudopsworks/terraform-module-gcp-cloudsql-database.svg?style=for-the-badge
+    url: https://github.com/cloudopsworks/terraform-module-gcp-cloudsql-database/releases/latest
   - name: Last Updated
-    image: https://img.shields.io/github/last-commit/<owner/repo>.svg?style=for-the-badge
-    url: https://github.com/<owner/repo>/commits
+    image: https://img.shields.io/github/last-commit/cloudopsworks/terraform-module-gcp-cloudsql-database.svg?style=for-the-badge
+    url: https://github.com/cloudopsworks/terraform-module-gcp-cloudsql-database/commits
 
 license: "APACHE2"
 
 copyrights:
   - name: "Cloud Ops Works LLC"
     url: "https://cloudopsworks.co"
-    year: "2026"
+    year: "2021"
 
-github_repo: <owner/repo>
+github_repo: cloudopsworks/terraform-module-gcp-cloudsql-database
 
 description: |-
-  <description>
+  Terraform module that provisions a Google Cloud SQL database instance (PostgreSQL, MySQL, or SQL Server) with Secret Manager credential storage and optional Hoop connection output.
 
 # Introduction to the project
 introduction: |-
-#  This is an introduction.
+  This module is the GCP equivalent of `terraform-module-aws-rds-database`. Unlike AWS RDS which uses separate resource
+  types per engine, Google Cloud SQL uses a single resource type — `google_sql_database_instance` — for all three
+  database engines. The engine is selected via the `database_version` field (e.g., `POSTGRES_16`, `MYSQL_8_0`,
+  `SQLSERVER_2022_STANDARD`).
+
+  The module provisions:
+  - A `google_sql_database_instance` with configurable tier, availability, disk, backup, maintenance, query insights,
+    and network settings.
+  - An initial database (`google_sql_database`) on the instance.
+  - A random admin password and `google_sql_user` (unless `managed_password` is enabled).
+  - A GCP Secret Manager secret containing the full credentials JSON (host, port, username, password, dbname, engine,
+    sslmode, connection_name).
+  - Optional per-field Hoop secrets and a structured `hoop_connections` output for enterprise Hoop agent integration.
 
 # How to use this project
 usage: |-
+  ```hcl
+  # terragrunt.hcl
+  terraform {
+    source = "git::https://github.com/cloudopsworks/terraform-module-gcp-cloudsql-database.git//?ref=v1.0.0"
+  }
+
+  include "root" {
+    path = find_in_parent_folders()
+  }
+
+  locals {
+    local_vars = yamldecode(file("inputs.yaml"))
+  }
+
+  inputs = merge(
+    local.local_vars,
+    {
+      org        = local.org
+      is_hub     = local.is_hub
+      spoke_def  = local.spoke_def
+      extra_tags = local.extra_tags
+    }
+  )
+  ```
+
+  **inputs.yaml** (see `.boilerplate/inputs.yaml` for the full annotated template):
+  ```yaml
+  settings:
+    name_prefix: "mydb"
+    database_version: "POSTGRES_16"
+    tier: "db-custom-2-7680"
+    availability_type: "REGIONAL"
+    disk_size: 50
+    backup:
+      enabled: true
+      point_in_time_recovery: true
+    private_ip:
+      enabled: true
+    hoop:
+      enabled: true
+      community: false
+      agent_id: "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+
+  network:
+    network_id: "projects/my-project/global/networks/my-vpc"
+    allocated_ip_range: "google-managed-services-my-vpc"
+  ```
 
 # Example usage
 examples: |-
+  **PostgreSQL 16 — private IP, HA, backups enabled:**
+  ```yaml
+  settings:
+    name_prefix: "app-postgres"
+    database_version: "POSTGRES_16"
+    tier: "db-custom-4-15360"
+    availability_type: "REGIONAL"
+    disk_size: 100
+    disk_autoresize: true
+    backup:
+      enabled: true
+      start_time: "02:00"
+      point_in_time_recovery: true
+      retained_backups: 14
+    private_ip:
+      enabled: true
+      require_ssl: true
+
+  network:
+    network_id: "projects/my-project/global/networks/default"
+    allocated_ip_range: "google-managed-services-default"
+  ```
+
+  **MySQL 8.0 — public IP with authorized networks:**
+  ```yaml
+  settings:
+    name_prefix: "app-mysql"
+    database_version: "MYSQL_8_0"
+    tier: "db-n1-standard-2"
+    availability_type: "ZONAL"
+    disk_size: 20
+
+  network:
+    authorized_networks:
+      - name: "office"
+        cidr: "203.0.113.0/24"
+  ```
 
 # How to get started quickly
 quickstart: |-
+  1. Ensure `make init/gcp` has been run in the module root to copy GCP boilerplate files.
+  2. Copy `.boilerplate/inputs.yaml` to your Terragrunt stack directory and fill in the required fields
+     (`settings.database_version`, `settings.tier`, `settings.name_prefix`).
+  3. Run `terragrunt init && terragrunt plan` to preview the resources.
+  4. Run `terragrunt apply` to provision the Cloud SQL instance.
 
 include:
   - "docs/targets.md"
